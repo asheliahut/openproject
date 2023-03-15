@@ -87,11 +87,12 @@ export abstract class ResourceCollectionService<T extends { id:ID }> {
    * Require the results for the given filter params
    * Returns a cached set if it was loaded already.
    *
-   * @param params List params to require
+   * @param params List params to require or the given collection key
    * @private
    */
-  public require(params:ApiV3ListParameters):Observable<T[]> {
-    const key = collectionKey(params);
+  public require(params:ApiV3ListParameters|string):Observable<T[]> {
+    const key = typeof params === 'string' ? params : collectionKey(params);
+
     if (this.collectionExists(key) || this.collectionLoading(key)) {
       return this.loadedCollection(key);
     }
@@ -238,12 +239,22 @@ export abstract class ResourceCollectionService<T extends { id:ID }> {
     options:ResourceCollectionLoadOptions = { handleErrors: true },
   ):Observable<IHALCollection<T>> {
     const key = typeof params === 'string' ? params : collectionKey(params);
+    return this.request(this.basePath() + key, key, options);
+  }
 
+  /**
+   * Load the given request and put it to the given key
+   * @param path
+   * @param key
+   * @param options
+   * @protected
+   */
+  protected request(path:string, key:string, options:ResourceCollectionLoadOptions) {
     setCollectionLoading(this.store, key);
 
     return this
       .http
-      .get<IHALCollection<T>>(this.basePath() + key)
+      .get<IHALCollection<T>>(path)
       .pipe(
         tap((collection) => insertCollectionIntoState(this.store, collection, key)),
         finalize(() => removeCollectionLoading(this.store, key)),
