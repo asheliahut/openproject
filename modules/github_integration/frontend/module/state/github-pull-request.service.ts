@@ -39,15 +39,25 @@ import {
 import { IGithubPullRequest } from 'core-app/features/plugins/linked/openproject-github_integration/state/github-pull-request.model';
 import { GithubPullRequestsStore } from 'core-app/features/plugins/linked/openproject-github_integration/state/github-pull-request.store';
 import { ID } from '@datorama/akita';
+import { tap } from 'rxjs/operators';
 
 @Injectable()
 export class GithubPullRequestResourceService extends ResourceCollectionService<IGithubPullRequest> {
-  ofWorkPackage(workPackage:WorkPackageResource) {
+  ofWorkPackage(workPackage:WorkPackageResource):Observable<IGithubPullRequest[]> {
     return this.require(`${workPackage.href as string}/github_pull_requests`);
   }
 
-  requireSingle(id:ID) {
-    return this.require(this.basePath() + id.toString());
+  requireSingle(id:ID):Observable<IGithubPullRequest> {
+    if (!this.query.hasEntity(id)) {
+      this
+        .http
+        .get(this.apiV3Service.github_pull_requests.id(id).path)
+        .pipe(
+          tap((el:IGithubPullRequest) => this.store.add(el)),
+        );
+    }
+
+    return this.lookup(id);
   }
 
   fetchCollection(
