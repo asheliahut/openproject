@@ -28,13 +28,14 @@
 
 require 'spec_helper'
 
-describe Query::Results, 'Filter on historic data', with_mail: false do
+describe Query::Results, 'Filter on historic data' do
   let(:historic_time) { "2022-08-01".to_datetime }
   let(:pre_historic_time) { historic_time - 1.day }
   let(:recent_time) { 1.hour.ago }
   let!(:work_package) do
-    new_work_package = create(:work_package, description: "This is the original description of the work package",
-                                             project: project1)
+    new_work_package = create(:work_package,
+                              description: "This is the original description of the work package",
+                              project: project1)
     new_work_package.update_columns created_at: historic_time
     new_work_package.journals.first.update_columns created_at: historic_time, updated_at: historic_time
     new_work_package.reload
@@ -45,8 +46,9 @@ describe Query::Results, 'Filter on historic data', with_mail: false do
   end
 
   let!(:work_package2) do
-    new_work_package = create(:work_package, description: "Lorem ipsum dolor sit amet, consectetur adipiscing elit",
-                                             project: project1)
+    new_work_package = create(:work_package,
+                              description: "Lorem ipsum dolor sit amet, consectetur adipiscing elit",
+                              project: project1)
     new_work_package.update_columns created_at: historic_time
     new_work_package.journals.first.update_columns created_at: historic_time, updated_at: historic_time
     new_work_package.reload
@@ -57,12 +59,20 @@ describe Query::Results, 'Filter on historic data', with_mail: false do
   end
 
   let(:project1) { create(:project) }
+  let(:project2) { create(:project) }
+
   let(:user1) do
     create(:user,
            firstname: 'user',
            lastname: '1',
            member_in_project: project1,
            member_with_permissions: %i[view_work_packages view_file_links])
+  end
+
+  def move_work_package_to_project(work_package, project, time)
+    work_package.update project:, updated_at: time
+    work_package.journals.last.update_columns(created_at: time, updated_at: time)
+    work_package.reload
   end
 
   describe "[prelims]" do
@@ -253,6 +263,91 @@ describe Query::Results, 'Filter on historic data', with_mail: false do
         it "includes the work package only once" do
           expect(subject.uniq).to eq subject
         end
+      end
+    end
+
+    context 'when the work package is moved to a project the user has no permissions in' do
+      current_user { user1 }
+
+      let(:query) do
+        build(:query, user: user1, project: nil).tap do |query|
+          query.filters.clear
+          query.timestamps = [historic_time, Time.zone.now]
+        end
+      end
+
+      before do
+        move_work_package_to_project(work_package, project2, 3.minutes.ago)
+      end
+
+      it "includes the work package (since the user was able to see it)" do
+        expect(subject).to include work_package
+      end
+    end
+
+    context 'when the work package is moved to a project the user has no permissions in ' \
+            'and also has no permission in the old project' do
+      current_user { user1 }
+
+      let(:query) do
+        build(:query, user: user1, project: nil).tap do |query|
+          query.filters.clear
+          query.timestamps = [historic_time, Time.zone.now]
+        end
+      end
+
+      before do
+        move_work_package_to_project(work_package, project2, 3.minutes.ago)
+        project1.members.destroy_all
+      end
+
+      it "does not include the work package" do
+        expect(subject).not_to include work_package
+      end
+    end
+
+    context 'when the work package is moved to a project the user has permissions in ' \
+            'and looses permission in the former project' do
+      current_user { user1 }
+
+      let(:query) do
+        build(:query, user: user1, project: nil).tap do |query|
+          query.filters.clear
+          query.timestamps = [historic_time, Time.zone.now]
+        end
+      end
+
+      before do
+        move_work_package_to_project(work_package, project2, 3.minutes.ago)
+        create(:member,
+               principal: user1,
+               project: project2,
+               roles: [create(:role, permissions: %w[view_work_packages])])
+        project1.members.destroy_all
+      end
+
+      it "includes the work package" do
+        expect(subject).to include work_package
+      end
+    end
+
+    context 'when the work package is moved to a project the user has no permissions in' \
+            'and the comparison time is after the move' do
+      current_user { user1 }
+
+      let(:query) do
+        build(:query, user: user1, project: nil).tap do |query|
+          query.filters.clear
+          query.timestamps = [2.minutes.ago, Time.zone.now]
+        end
+      end
+
+      before do
+        move_work_package_to_project(work_package, project2, 3.minutes.ago)
+      end
+
+      it "does not include the work package since the user is not allowed to see the work package at the timestamps" do
+        expect(subject).not_to include work_package
       end
     end
   end
