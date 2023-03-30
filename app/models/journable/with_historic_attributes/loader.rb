@@ -38,7 +38,7 @@ class Journable::WithHistoricAttributes
 
     def at_timestamp(timestamp)
       @at_timestamp ||= Hash.new do |h, t|
-        h[t] = journables.first.class.at_timestamp(t).where(id: journables.map(&:id)).index_by(&:id)
+        h[t] = journables.first.class.visible.at_timestamp(t).where(id: journables.map(&:id)).index_by(&:id)
       end
 
       @at_timestamp[timestamp]

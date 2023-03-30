@@ -250,19 +250,26 @@ describe 'API v3 Work package resource',
       let(:created_at) { baseline_time - 1.day }
 
       let(:work_package) do
-        new_work_package = create(:work_package, subject: "The current work package", project:)
+        new_work_package = create(:work_package,
+                                  subject: "The current work package",
+                                  assigned_to: current_user,
+                                  project:)
         new_work_package.update_columns(created_at:)
         new_work_package
       end
       let(:original_journal) do
         create_journal(journable: work_package, timestamp: created_at,
                        version: 1,
-                       attributes: { subject: "The original work package" })
+                       attributes: { subject: "The original work package",
+                                     assigned_to: current_user,
+                                     project: })
       end
       let(:current_journal) do
         create_journal(journable: work_package, timestamp: 1.day.ago,
                        version: 2,
-                       attributes: { subject: "The current work package" })
+                       attributes: { subject: "The current work package",
+                                     assigned_to: current_user,
+                                     project: })
       end
 
       def create_journal(journable:, version:, timestamp:, attributes: {})
@@ -702,6 +709,96 @@ describe 'API v3 Work package resource',
         it "has no attributesByTimestamp" do
           expect(subject.body)
             .not_to have_json_path('_embedded/elements/0/_embedded/attributesByTimestamp')
+        end
+      end
+
+      describe "when no longer being allowed to see the work package but used to in the past (moved to different project)" do
+        let(:path) { api_v3_paths.path_for(:work_packages, timestamps:) }
+        let(:project2) { create(:project) }
+        let(:work_packages) { [work_package] }
+
+        before do
+          work_package.update project: project2, updated_at: 3.minutes.ago
+          work_package.journals.last.update_columns(created_at: 3.minutes.ago, updated_at: 3.minutes.ago)
+        end
+
+        it 'finds the work package' do
+          expect(subject.body)
+            .to be_json_eql(work_package.id.to_json)
+                  .at_path('_embedded/elements/0/id')
+        end
+
+        it "has no attributes in the main object" do
+          expect(subject.body)
+            .not_to have_json_path('_embedded/elements/0/subject')
+          expect(subject.body)
+            .not_to have_json_path('_embedded/elements/0/_links/project')
+        end
+
+        describe "_meta" do
+          it 'marks the work package as not matching the filters' do
+            expect(subject.body)
+              .to be_json_eql(false.to_json)
+                    .at_path('_embedded/elements/0/_meta/matchesFilters')
+          end
+
+          it 'marks the work package as not existing today' do
+            expect(subject.body)
+              .to be_json_eql(false.to_json)
+                    .at_path('_embedded/elements/0/_meta/exists')
+          end
+        end
+
+        describe "attributesByTimestamp/0 (baseline attributes)" do
+          describe "_meta" do
+            describe "matchesFilters" do
+              it 'marks the work package as not matching the filters at the baseline time' do
+                expect(subject.body)
+                  .to be_json_eql(true.to_json)
+                        .at_path('_embedded/elements/0/_embedded/attributesByTimestamp/0/_meta/matchesFilters')
+              end
+            end
+
+            describe "exists" do
+              it 'marks the work package as existing at the baseline time' do
+                expect(subject.body)
+                  .to be_json_eql(true.to_json)
+                        .at_path('_embedded/elements/0/_embedded/attributesByTimestamp/0/_meta/exists')
+              end
+            end
+          end
+
+          it "has all the supported attributes including those that did not change" do
+            expect(subject.body)
+              .to be_json_eql("The original work package".to_json)
+                    .at_path('_embedded/elements/0/_embedded/attributesByTimestamp/0/subject')
+            expect(subject.body)
+              .to be_json_eql(project.name.to_json)
+                    .at_path('_embedded/elements/0/_embedded/attributesByTimestamp/0/_links/project/title')
+            expect(subject.body)
+              .to be_json_eql(current_user.name.to_json)
+                    .at_path('_embedded/elements/0/_embedded/attributesByTimestamp/0/_links/assignedTo/title')
+          end
+        end
+
+        describe "attributesByTimestamp/1 (current attributes)" do
+          describe "_meta" do
+            describe "matchesFilters" do
+              it 'marks the work package as not matching the filters today' do
+                expect(subject.body)
+                  .to be_json_eql(false.to_json)
+                        .at_path('_embedded/elements/0/_embedded/attributesByTimestamp/1/_meta/matchesFilters')
+              end
+            end
+
+            describe "exists" do
+              it 'marks the work package as not existing today' do
+                expect(subject.body)
+                  .to be_json_eql(false.to_json)
+                        .at_path('_embedded/elements/0/_embedded/attributesByTimestamp/1/_meta/exists')
+              end
+            end
+          end
         end
       end
 
