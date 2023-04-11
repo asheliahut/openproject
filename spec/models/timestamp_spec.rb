@@ -171,6 +171,53 @@ describe Timestamp do
       end
     end
 
+    describe "when providing bare words for dates" do
+      describe "yesterday@12:00" do
+        subject { described_class.parse("yesterday@12:00") }
+
+        it "returns a Timestamp representing the yesterday at 12:00 pm" do
+          expect(subject).to be_a described_class
+          expect(subject.relative?).to be false
+          expect(subject.to_time).to eq 1.day.ago.change(hour: 12)
+        end
+      end
+
+      describe "last_working_day@12:00" do
+        subject { described_class.parse("last_working_day@12:00") }
+
+        before do
+          week_with_all_days_working
+          create(:non_working_day, date: Time.zone.yesterday)
+        end
+
+        it "returns a Timestamp representing the last working day at 12:00 pm" do
+          expect(subject).to be_a described_class
+          expect(subject.relative?).to be false
+          expect(subject.to_time).to eq 2.days.ago.change(hour: 12)
+        end
+      end
+
+      describe "last_week@12:00" do
+        subject { described_class.parse("last_week@12:00") }
+
+        it "returns a Timestamp representing the last week at 12:00 pm" do
+          expect(subject).to be_a described_class
+          expect(subject.relative?).to be false
+          expect(subject.to_time).to eq 1.week.ago.change(hour: 12)
+        end
+      end
+
+      describe "last_month@12:00" do
+        subject { described_class.parse("last_month@12:00") }
+
+        it "returns a Timestamp representing the last month at 12:00 pm" do
+          expect(subject).to be_a described_class
+          expect(subject.relative?).to be false
+          expect(subject.to_time).to eq 1.month.ago.change(hour: 12)
+        end
+      end
+    end
+
     describe "when providing something invalid" do
       subject { described_class.parse("foo") }
 
@@ -184,6 +231,22 @@ describe Timestamp do
         it "raises an error" do
           expect { subject }.to raise_error ArgumentError
           expect { subject }.to raise_error ActiveSupport::Duration::ISO8601Parser::ParsingError
+        end
+      end
+
+      describe "when providing something invalid with date bare words" do
+        subject { described_class.parse("yesterday@") }
+
+        it "raises an error" do
+          expect { subject }.to raise_error ArgumentError
+        end
+      end
+
+      describe "when providing something invalid with date bare words#2" do
+        subject { described_class.parse("yesterday@11:22:asd") }
+
+        it "raises an error" do
+          expect { subject }.to raise_error ArgumentError
         end
       end
     end
